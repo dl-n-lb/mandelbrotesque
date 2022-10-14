@@ -1,0 +1,3 @@
+[submodule "common_cxx"]
+	path = common_cxx
+	url = git@github.com:mattdrinksglue/common_cxx.git
