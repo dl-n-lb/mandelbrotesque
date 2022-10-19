@@ -56,7 +56,7 @@ public:
         f64 re = tlx + ((f64)x / 800.0) * scale_x;
         f64 im = tly + ((f64)y / 600.0) * scale_y;
         complex64 z = {re, im};
-        auto color = (std::norm(f.iterate(z, 1000)) > 4) ? RAYWHITE : BLACK;
+        auto color = (std::abs(f.iterate(z, 100)) < 4) ? RAYWHITE : BLACK;
         pixels[800*y + x] = color;
       }
     }    
@@ -85,16 +85,11 @@ const static u32 height = 600;
 
 int main(int, char**) {
   RaylibWindow window{width, height, "Fractal Viewer"};
-  
-  //window.setTargetFPS(60);
-  
-  const auto update_fn = [](RaylibWindow* win){
-    auto renderer = win->getRenderer(BLACK);    
-  };
+  SetTraceLogLevel(LOG_ERROR);
   
   using Mandelbrot = Fractal<mandel_iter>;
   
-  FractalViewer<Mandelbrot> mandel_viewer{-1.5, 1, 3, 2};
+  FractalViewer<Mandelbrot> mandel_viewer{0, 0, 0, 0};
   
   const auto viewer_fn = mandel_viewer.getRendererBaked();
   
