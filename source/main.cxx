@@ -43,7 +43,7 @@ int main(int, char**) {
   
   const auto update_fn = [](RaylibWindow* win){};
   
-  while(!window.shouldCloseouldClose()) {
+  while(!window.shouldClose()) {
     window.Update(update_fn);
   }
   
