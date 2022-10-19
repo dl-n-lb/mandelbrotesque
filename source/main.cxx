@@ -38,16 +38,17 @@ const static u32 width = 800;
 const static u32 height = 600;
 
 int main(int, char**) {
-  printf("Hello World");
   RaylibWindow window{width, height, "Fractal Viewer"};
   
-  const auto update_fn = [](RaylibWindow* win){};
+  window.setTargetFPS(60);
+  
+  const auto update_fn = [](RaylibWindow* win){
+    auto renderer = win->getRenderer(BLACK);    
+  };
   
   while(!window.shouldClose()) {
     window.Update(update_fn);
   }
-  
-  printf("Goodbye!");
   
   return 0;
 }
