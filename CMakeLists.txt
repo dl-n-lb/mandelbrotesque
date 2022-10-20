@@ -6,6 +6,8 @@ set(CMAKE_CXX_COMPILER "/usr/bin/g++") # remove this or change if your compiler 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 
+add_compile_options(-O3)
+
 include_directories(common_cxx/)
 
 add_executable(mandelbrotesque source/main.cxx)

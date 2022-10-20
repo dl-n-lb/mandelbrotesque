@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <complex>
 #include <chrono>
+#include <iostream>
 #include "types/type_alias.hxx"
 #define RAYLIB_WINDOW_IMPL
 #define RAYLIB_RENDERER_IMPL
@@ -8,90 +9,120 @@
 
 using complex64 = std::complex<f64>;
 
-template<auto IterationFn>
-class Fractal{
-public:
-  Fractal() {} 
-  // TODO: accept different # of args
-  complex64 iterate(complex64 c, u32 iter_max) {
-    complex64 z = c;
-    for (u32 i = 0; i < iter_max; ++i) {
-      z = IterationFn(z, c);
-    }
 
-    return z;
-  }
+// TODO:
+// SOME WAY TO USE SIMD WITH THE POW AND LOG FUNCTIONS
+// (CUSTOM IMPLEMENTATION??)
+// BUT IT NEEDS TO BE KEEPING VECTORIZATION
+
+// NOTE:
+// top doesnt work (deleted destructor since it assumes its a type)
+// which doesnt work with complex (why does complex have destructor??)
+// using csimd = nsimd_t<complex64, 4>;
+// NOTE:
+// this is undefined behaviour since std::complex is only defined over
+// float, double and long double
+using complex64v4 = std::complex<f64v4>;
+
+struct coeff_t {
+  complex64 coeff;
+  bool is_relative; // will add the coeff to the 'c' coordinate if true
 };
 
-complex64 mandel_iter(complex64 z, complex64 c) {
-  return std::pow(z, 2) + c;
-}
-
-template<class Fractal, bool IsGPU = false>
-class FractalViewer {
+template<typename complex_type, size_t N>
+class PolynomialFractal {
 public:
-  FractalViewer(f64 top_left_x, f64 top_left_y, f64 x_scale, f64 y_scale) : 
-                tlx(top_left_x), tly(top_left_y), 
-                scale_x(x_scale), scale_y(y_scale), f() {}
+  PolynomialFractal(arr<N, coeff_t> coeffs) : _coeffs(coeffs) {}
   
-  auto getRenderer() {
-    return [this](RaylibWindow* win) {
-      win->getRenderer(RED);
-      for (u32 y = 0; y < 600; ++y) {        
-        for (u32 x = 0; x < 800; ++x) {
-          f64 re = tlx + ((f64)x / 800.0) * scale_x;
-          f64 im = tly + ((f64)y / 600.0) * scale_y;
-          complex64 z = {re, im};
-          auto color = (std::norm(f.iterate(z, 10)) > 4) ? RAYWHITE : BLACK;
-          DrawPixel(x, y, color);
-        }
-      }    
-    };
+  complex_type iterate(complex_type z) {
+    complex_type ret;
+    for(f64 n = N; n >= 0; --n) {
+      ret += _coeffs[N - n] * std::pow(z, n);
+    }
+    return ret;
   }
   
-  arr<800*600, Color> bake() {  
-    arr<800*600, Color> pixels;
-    for (u32 y = 0; y < 600; ++y) {        
-      for (u32 x = 0; x < 800; ++x) {
-        f64 re = tlx + ((f64)x / 800.0) * scale_x;
-        f64 im = tly + ((f64)y / 600.0) * scale_y;
-        complex64 z = {re, im};
-        auto color = (std::abs(f.iterate(z, 100)) < 4) ? RAYWHITE : BLACK;
-        pixels[800*y + x] = color;
-      }
-    }    
-    return pixels;
-  } 
+  bool inSet(complex_type z1, u64 iterations) {
+    complex_type z = z1;
+    f64 B = std::max(std::abs(z1), std::pow(2, 1.0/(N-1)));
+    for(u64 i = 0; i < iterations; ++i) {
+      z = iterate(z);
+    }
+    return std::abs(z) < B;
+  }
   
-  auto getRendererBaked() {
-    auto pixels = bake();
-    return [this, pixels] (RaylibWindow* win) {
-      win->getRenderer(RED);
-      for (u32 y = 0; y < 600; ++y) {
-        for (u32 x = 0; x < 800; ++x) {
-          DrawPixel(x, y, pixels[y * 800 + x]);
+  f64 smoothSet(complex_type z1, u64 iterations) {
+    complex_type z = z1;
+    f64 B = std::max(std::abs(z1), std::pow(2, 1.0/(N-1)));
+    for (u64 i = 0; i < iterations; ++i) {
+      z = iterate(z);
+    }
+    f64 sn = iterations - std::log(std::log(std::abs(z)) / std::log(B)) /
+                          std::log(N);
+    return sn;
+  }
+private:
+  arr<N, coeff_t> _coeffs;
+};
+
+template<class Fractal, bool isGpuRendered = false>
+class FractalViewer {
+public: 
+  FractalViewer(complex64 top_left, complex64 dims)
+             : _top_left(top_left), _dims(dims) {}  
+  
+  auto getRenderer() {
+    return [this] (RaylibWindow* win) {
+      // lifetime thing
+      auto renderer = win->getRenderer(RED);
+      for (u32 y = 0; y < win->getHeight(); ++y){
+        for (u32 x = 0; x < win->getWidth(); ++x) {
+          
         }
       }
     };
   }
   
 private:
-  f64 scale_x, scale_y, tlx, tly;
-  Fractal f;
+  complex64 _top_left;
+  complex64 _dims;
+  Fractal frac;
 };
 
 const static u32 width = 800;
 const static u32 height = 600;
 
+// TODO:
+// ALLOW MOVING AND SCALING THE SET
+// DRAWING WITH GPU IS MUCH QUICKER
+// SOME WAY TO BLIT TO SCREEN RATHER THAN DRAWING PIXELS 1 BY 1
+// COLORS
+// MORE ACCURATE METHODS (INIGO QUILEZ)
+
 int main(int, char**) {
   RaylibWindow window{width, height, "Fractal Viewer"};
   SetTraceLogLevel(LOG_ERROR);
   
-  using Mandelbrot = Fractal<mandel_iter>;
+  // NOTE:
+  // top doesnt work (deleted destructor since it assumes its a type)
+  // which doesnt work with complex (why does complex have destructor??)
+  using csimd = nsimd_t<complex64, 4>;
+  // NOTE:
+  // this is undefined behaviour since std::complex is only defined over
+  // float, double and long double
+  using simdc = std::complex<f64v4>;
+
+  // THIS IS WHAT ASSIGMNENT MIGHT LOOK LIKE
+  // NEED TO WRAP ?
+  simdc a;
+  f64v4 re;
+  re[0] = 1;
+  f64v4 im;
+  im[0] = 1;
+  a.real(re);
+  a.imag(im);
   
-  FractalViewer<Mandelbrot> mandel_viewer{0, 0, 0, 0};
-  
-  const auto viewer_fn = mandel_viewer.getRendererBaked();
+  std::cout << a.real()[0] << " " << a.imag()[0] << std::endl;
   
   auto start = std::chrono::system_clock::now();
   u64 frames = 0;
