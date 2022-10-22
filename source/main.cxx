@@ -34,7 +34,7 @@ struct coeff_t {
 template<typename complex_type, size_t N>
 class PolynomialFractal {
 public:
-  PolynomialFractal(arr<N, coeff_t> coeffs) : _coeffs(coeffs) {}
+  PolynomialFractal(arr<N+1, coeff_t> coeffs) : _coeffs(coeffs) {}
   
   complex_type iterate(complex_type z, complex_type c) {
     complex_type ret;
@@ -55,16 +55,20 @@ public:
   
   f64 smoothSet(complex_type z1, u64 iterations) {
     complex_type z = z1;
-    f64 B = std::max(std::abs(z1), std::pow(2, 1.0/(N-1)));
-    for (u64 i = 0; i < iterations; ++i) {
+    f64 B = 10*std::max(std::abs(z1), std::pow(2, 1.0/(N-1)));
+    f64 threshold = 100.0;
+    f64 i;
+    for (i = 0; i < iterations; ++i) {
       z = iterate(z, z1);
+      if (std::norm(z) > threshold) break;
     }
-    f64 sn = iterations - std::log(std::log(std::abs(z)) / std::log(B)) /
+    if (i == iterations) return 0;
+    f64 sn = iterations - std::log(std::log(std::norm(z)) / std::log(threshold)) /
                           std::log(N);
     return sn;
   }
 private:
-  arr<N, coeff_t> _coeffs;
+  arr<N+1, coeff_t> _coeffs;
 };
 
 template<class Fractal, bool isGpuRendered = false>
@@ -90,25 +94,27 @@ public:
   }
   
   auto getBakedRenderer(RaylibWindow* win) {
-    vec<f64> inSet;
+    vec<f64> smoothIter;
     u32 winw = win->getWidth();
     u32 winh = win->getHeight();
     for (u32 y = 0; y < winh; ++y){
       for (u32 x = 0; x < winw; ++x) {
         complex64 coord = _top_left + complex64{_dims.real() * (f64)x / winw,
                                                _dims.imag() * (f64)y / winh};
-        inSet.push_back(_frac.inSet(coord, 100) ? 1.0 : 0);
+        smoothIter.push_back(_frac.smoothSet(coord, 100));
       }
     }
-    return [this, inSet] (RaylibWindow* win) {
+    return [this, smoothIter] (RaylibWindow* win) {
       auto renderer = win->getRenderer(RED);
       u32 winw = win->getWidth();
       u32 winh = win->getHeight();
       for (u32 y = 0; y < winh; ++y){
         for (u32 x = 0; x < winw; ++x) {
-          complex64 coord = _top_left + complex64{_dims.real() * (f64)x / winw,
-                                                 _dims.imag() * (f64)y / winh};
-          DrawPixel(x, y, (inSet[x + winw * y] == 1) ? WHITE : BLACK);
+          f64 scale = smoothIter[x + y * winw] / 100;
+          u8 lightness = (u8)(scale * 254);
+          Color color_val = Color { lightness, lightness, lightness, 255 };
+          
+          DrawPixel(x, y, color_val);
         }
       }
     };
@@ -134,12 +140,16 @@ int main(int, char**) {
   RaylibWindow window{width, height, "Fractal Viewer"};
   SetTraceLogLevel(LOG_ERROR);
 
-  PolynomialFractal<complex64, 2> frac = {{coeff_t{0, 0}, coeff_t{0, 0}}};
+  PolynomialFractal<complex64, 2> mandel = {{coeff_t{1, 0}, coeff_t{0, 0}, coeff_t{0, 1}}};
   
-  FractalViewer mandel_view = {complex64{-1.5, -1}, complex64{3, 2}, frac};  
+  PolynomialFractal<complex64, 7> frac = {{
+    coeff_t{1, 0}, coeff_t{0, 0}, coeff_t{0, 0}, coeff_t{0, 0}, coeff_t{3, -1},
+    coeff_t{complex64{-1, -1}, -1}, coeff_t{0, 1}
+  }};
+  
+  FractalViewer mandel_view = {complex64{-1.5, -1}, complex64{3, 2}, mandel};  
   
   auto viewer_fn = mandel_view.getBakedRenderer(&window);
-  
   auto start = std::chrono::system_clock::now();
   u64 frames = 0;
   while(!window.shouldClose()) {
